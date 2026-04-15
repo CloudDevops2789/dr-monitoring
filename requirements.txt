@@ -1,5 +1,11 @@
-requests
-psutil
-pymysql
-PyYAML
-cryptography
+certifi==2026.2.25
+cffi==2.0.0
+charset-normalizer==3.4.7
+cryptography==46.0.7
+idna==3.11
+psutil==7.2.2
+pycparser==3.0
+PyMySQL==1.1.2
+PyYAML==6.0.3
+requests==2.33.1
+urllib3==2.6.3
