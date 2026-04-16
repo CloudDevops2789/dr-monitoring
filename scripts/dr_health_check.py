@@ -1,11 +1,20 @@
 import sys
 import requests
-import psutil
 import pymysql
 import yaml
 import logging
+import os
 
 from utils.servicenow import create_incident
+
+# ANSI color codes
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+RED = "\033[91m"
+BOLD = "\033[1m"
+CYAN = "\033[96m"
+MAGENTA = "\033[95m"
+RESET = "\033[0m"
 
 # Logging setup
 logging.basicConfig(
@@ -14,7 +23,14 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-print("===== DR Health Check Started =====")
+# Helper print functions
+def ok(msg): print(f"{GREEN}[OK]{RESET} {msg}")
+def warn(msg): print(f"{YELLOW}[WARNING]{RESET} {msg}")
+def err(msg): print(f"{RED}[ERROR]{RESET} {msg}")
+def crit(msg): print(f"{BOLD}{RED}[CRITICAL]{RESET} {msg}")
+def info(msg): print(f"{CYAN}{msg}{RESET}")
+
+info("===== DR Health Check Started =====")
 logging.info("Health check started")
 
 # Load config
@@ -23,9 +39,22 @@ with open('config/config.yaml', 'r') as file:
 
 WEB_URL = config['web_url']
 DB = config['database']
-THRESHOLDS = config['thresholds']
 
 status = 0
+
+# -----------------------------
+# 0. Host Reachability Check
+# -----------------------------
+host = DB['host']
+ping = os.system(f"ping -c 1 {host} > /dev/null 2>&1")
+
+if ping != 0:
+    crit("Host unreachable")
+    logging.error("Host unreachable")
+    status = 1
+else:
+    ok("Host reachable")
+    logging.info("Host reachable")
 
 # -----------------------------
 # 1. Web Check
@@ -33,17 +62,16 @@ status = 0
 try:
     response = requests.get(WEB_URL, timeout=5)
     if response.status_code == 200:
-        print("[OK] Web is reachable")
+        ok("Web is reachable")
         logging.info("Web check passed")
     else:
-        print(f"[ERROR] Web failed: {response.status_code}")
+        err(f"Web failed: {response.status_code}")
         logging.error("Web check failed")
         status = 1
 except Exception as e:
-    print(f"[ERROR] Web exception: {e}")
+    err(f"Web exception: {e}")
     logging.error(f"Web exception: {e}")
     status = 1
-
 
 # -----------------------------
 # 2. DB Check
@@ -57,50 +85,27 @@ try:
         connect_timeout=5
     )
     conn.close()
-    print("[OK] DB reachable")
+    ok("DB reachable")
     logging.info("DB check passed")
 except Exception as e:
-    print(f"[ERROR] DB failed: {e}")
+    err(f"DB failed: {e}")
     logging.error(f"DB check failed: {e}")
     status = 1
 
-
-# -----------------------------
-# 3. CPU Check
-# -----------------------------
-cpu = psutil.cpu_percent(interval=1)
-if cpu > THRESHOLDS['cpu']:
-    print(f"[WARNING] High CPU: {cpu}%")
-    logging.warning(f"High CPU: {cpu}")
-    status = 1
-else:
-    print(f"[OK] CPU normal: {cpu}%")
-
-
-# -----------------------------
-# 4. Memory Check
-# -----------------------------
-mem = psutil.virtual_memory().percent
-if mem > THRESHOLDS['memory']:
-    print(f"[WARNING] High Memory: {mem}%")
-    logging.warning(f"High Memory: {mem}")
-    status = 1
-else:
-    print(f"[OK] Memory normal: {mem}%")
-
-print("===== Health Check Completed =====")
+info("===== Health Check Completed =====")
 logging.info("Health check completed")
 
 # -----------------------------
 # FINAL DECISION
 # -----------------------------
 if status != 0:
-    print("DR_TRIGGER=true")
+    print(f"{BOLD}{MAGENTA}DR_TRIGGER=true{RESET}")
     logging.error("System unhealthy - triggering ServiceNow incident")
 
     create_incident()
+    ok("ServiceNow incident created")
 
     sys.exit(1)
 else:
-    print("System healthy")
+    ok("System healthy")
     sys.exit(0)
