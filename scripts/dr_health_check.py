@@ -102,7 +102,6 @@ if status != 0:
     print(f"{BOLD}{MAGENTA}DR_TRIGGER=true{RESET}")
     logging.error("System unhealthy - triggering ServiceNow incident")
 
-    # Expect create_incident() to return "created" or "existing"
     result = create_incident()
 
     if result == "created":
@@ -110,7 +109,7 @@ if status != 0:
     elif result == "existing":
         warn("Reusing existing active incident")
     else:
-        warn("ServiceNow response unclear")
+        err("ServiceNow operation failed")
 
     sys.exit(1)
 else:

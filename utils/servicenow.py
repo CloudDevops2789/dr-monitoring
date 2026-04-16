@@ -1,5 +1,4 @@
 import requests
-import logging
 import yaml
 import urllib3
 import os
@@ -22,7 +21,7 @@ def create_incident():
             "Accept": "application/json",
         }
 
-        #  FIX: only check ACTIVE incidents
+        # Check ACTIVE incidents
         query = "short_descriptionLIKEOnPrem Server Down^incident_stateIN1,2,3"
 
         check = requests.get(
@@ -33,7 +32,7 @@ def create_incident():
             verify=False
         )
 
-        if check.status_code == 200 and check.json()["result"]:
+        if check.status_code == 200 and check.json().get("result"):
             existing = check.json()["result"][0]
 
             number = existing["number"]
@@ -44,7 +43,7 @@ def create_incident():
             with open("logs/last_incident.txt", "w") as f:
                 f.write(f"{number},{sys_id}")
 
-            return
+            return "existing"
 
         # Create new incident
         payload = {
@@ -56,26 +55,34 @@ def create_incident():
         }
 
         response = requests.post(
-            url, json=payload, auth=auth, headers=headers, verify=False
+            url,
+            json=payload,
+            auth=auth,
+            headers=headers,
+            verify=False
         )
 
         if response.status_code == 201:
-            data = response.json()
+            data = response.json()["result"]
 
-            sys_id = data["result"]["sys_id"]
-            number = data["result"]["number"]
+            number = data["number"]
+            sys_id = data["sys_id"]
 
             print(f"[OK] ServiceNow incident created: {number}")
 
             with open("logs/last_incident.txt", "w") as f:
                 f.write(f"{number},{sys_id}")
 
+            return "created"
+
         else:
             print(f"[ERROR] Failed to create incident: {response.status_code}")
             print(response.text)
+            return "error"
 
     except Exception as e:
         print(f"[ERROR] create_incident: {e}")
+        return "error"
 
 
 def close_incident():
@@ -96,7 +103,6 @@ def close_incident():
         auth = (snow["username"], snow["password"])
         headers = {"Content-Type": "application/json"}
 
-        #  STRONG STATE CHECK
         get_resp = requests.get(url, auth=auth, headers=headers, verify=False)
 
         if get_resp.status_code != 200:
@@ -110,14 +116,8 @@ def close_incident():
 
         print(f"[DEBUG] {number} | active={active} | state={state}")
 
-        #  CRITICAL FIX
-        if active == "false":
-            print(f"[INFO] Incident {number} already closed")
-            os.remove("logs/last_incident.txt")
-            return
-
-        if state in ["6", "7"]:
-            print(f"[INFO] Incident {number} already resolved")
+        if active == "false" or state in ["6", "7"]:
+            print(f"[INFO] Incident {number} already closed/resolved")
             os.remove("logs/last_incident.txt")
             return
 
@@ -146,10 +146,7 @@ def close_incident():
 
         if response.status_code == 200:
             print(f"[OK] Incident {number} resolved successfully")
-
-            #  IMPORTANT: remove file so it NEVER runs again
             os.remove("logs/last_incident.txt")
-
         else:
             print(f"[ERROR] Close failed: {response.text}")
 
